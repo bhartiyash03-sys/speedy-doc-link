@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,13 +15,39 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    // Check if user is already logged in
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate("/");
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        navigate("/");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
   const handleSendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!phone || phone.length < 10) {
+      toast.error("Please enter a valid phone number");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        phone: phone,
+        phone: phone.startsWith("+") ? phone : `+${phone}`,
+        options: {
+          shouldCreateUser: true,
+        },
       });
 
       if (error) throw error;
@@ -37,11 +63,17 @@ const Auth = () => {
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!otp || otp.length !== 6) {
+      toast.error("Please enter a valid 6-digit OTP");
+      return;
+    }
+
     setLoading(true);
 
     try {
       const { error } = await supabase.auth.verifyOtp({
-        phone: phone,
+        phone: phone.startsWith("+") ? phone : `+${phone}`,
         token: otp,
         type: "sms",
       });
@@ -49,7 +81,6 @@ const Auth = () => {
       if (error) throw error;
 
       toast.success("Successfully logged in!");
-      navigate("/");
     } catch (error: any) {
       toast.error(error.message || "Invalid OTP");
     } finally {
@@ -59,7 +90,7 @@ const Auth = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md shadow-elegant">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
