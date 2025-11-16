@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SearchBar } from "@/components/SearchBar";
 import { CategoryCard } from "@/components/CategoryCard";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 import {
   Heart,
   Stethoscope,
@@ -12,6 +14,8 @@ import {
   Sparkles,
   Activity,
   Eye,
+  User,
+  LogOut,
 } from "lucide-react";
 
 const categories = [
@@ -27,7 +31,31 @@ const categories = [
 
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    checkAuth();
+    
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    setIsAuthenticated(!!session);
+    setLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success("Logged out successfully");
+    setIsAuthenticated(false);
+  };
 
   const handleSearch = () => {
     navigate(`/doctors?search=${encodeURIComponent(searchQuery)}`);
@@ -47,13 +75,33 @@ export default function Dashboard() {
               <Activity className="w-8 h-8 text-primary" />
               <h1 className="text-2xl font-bold text-foreground">MediConnect</h1>
             </div>
-            <nav className="flex gap-4">
+            <nav className="flex gap-2 items-center">
               <Button variant="ghost" onClick={() => navigate("/")}>
                 Home
               </Button>
               <Button variant="ghost" onClick={() => navigate("/doctors")}>
                 Find Doctors
               </Button>
+              {!loading && (
+                <>
+                  {isAuthenticated ? (
+                    <>
+                      <Button variant="ghost" onClick={() => navigate("/profile")} size="sm">
+                        <User className="mr-2 h-4 w-4" />
+                        Profile
+                      </Button>
+                      <Button variant="ghost" onClick={handleLogout} size="sm">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Logout
+                      </Button>
+                    </>
+                  ) : (
+                    <Button onClick={() => navigate("/auth")} size="sm">
+                      Sign In
+                    </Button>
+                  )}
+                </>
+              )}
             </nav>
           </div>
         </div>
