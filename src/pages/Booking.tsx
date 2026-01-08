@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Calendar } from "@/components/ui/calendar";
-import { Activity, Video, MapPin, Calendar as CalendarIcon, Clock, CheckCircle } from "lucide-react";
+import { Activity, Video, MapPin, Calendar as CalendarIcon, Clock, CheckCircle, CreditCard, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 const mockDoctor = {
   name: "Dr. Sarah Johnson",
@@ -31,77 +32,43 @@ export default function Booking() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [selectedTime, setSelectedTime] = useState("");
   const [reason, setReason] = useState("");
-  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const handleBooking = () => {
+  const handlePayment = async () => {
     if (!selectedDate || !selectedTime) {
       toast.error("Please select date and time");
       return;
     }
 
-    // Simulate booking
-    setIsConfirmed(true);
-    toast.success("Appointment booked successfully!");
+    setIsProcessing(true);
+    
+    try {
+      const fee = consultationType === "online" ? mockDoctor.onlineFee : mockDoctor.inPersonFee;
+      
+      const { data, error } = await supabase.functions.invoke("create-payment", {
+        body: {
+          amount: fee,
+          doctorName: mockDoctor.name,
+          consultationType: consultationType === "online" ? "Online" : "In-person",
+          appointmentDate: selectedDate.toLocaleDateString(),
+          appointmentTime: selectedTime,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.url) {
+        window.open(data.url, "_blank");
+      } else {
+        throw new Error("No checkout URL received");
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      toast.error("Failed to initiate payment. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
-
-  if (isConfirmed) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-8 text-center">
-          <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-10 h-10 text-accent" />
-          </div>
-          <h2 className="text-2xl font-bold text-foreground mb-2">
-            Appointment Confirmed!
-          </h2>
-          <p className="text-muted-foreground mb-6">
-            Your appointment has been successfully booked with {mockDoctor.name}
-          </p>
-          
-          <div className="bg-secondary/30 rounded-lg p-4 mb-6 text-left">
-            <div className="flex items-center gap-3 mb-3">
-              <img
-                src={mockDoctor.image}
-                alt={mockDoctor.name}
-                className="w-12 h-12 rounded-full"
-              />
-              <div>
-                <p className="font-semibold">{mockDoctor.name}</p>
-                <p className="text-sm text-muted-foreground">{mockDoctor.specialization}</p>
-              </div>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="w-4 h-4 text-primary" />
-                <span>{selectedDate?.toLocaleDateString()}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" />
-                <span>{selectedTime}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {consultationType === "online" ? (
-                  <Video className="w-4 h-4 text-primary" />
-                ) : (
-                  <MapPin className="w-4 h-4 text-primary" />
-                )}
-                <span>{consultationType === "online" ? "Online Consultation" : "In-person Visit"}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Button className="w-full" onClick={() => navigate("/")}>
-              Back to Home
-            </Button>
-            <Button variant="outline" className="w-full" onClick={() => navigate("/doctors")}>
-              Find More Doctors
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -249,12 +216,27 @@ export default function Booking() {
                 </div>
               </div>
 
-              <Button className="w-full" size="lg" onClick={handleBooking}>
-                Confirm Booking
+              <Button 
+                className="w-full" 
+                size="lg" 
+                onClick={handlePayment}
+                disabled={isProcessing || !selectedDate || !selectedTime}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="w-4 h-4 mr-2" />
+                    Pay ₹{consultationType === "online" ? mockDoctor.onlineFee : mockDoctor.inPersonFee}
+                  </>
+                )}
               </Button>
 
               <p className="text-xs text-muted-foreground text-center mt-4">
-                Payment will be processed after confirmation
+                Secure payment via Stripe • UPI, Cards & Wallets accepted
               </p>
             </Card>
           </div>
