@@ -6,6 +6,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Doctors from "./pages/Doctors";
 import DoctorProfile from "./pages/DoctorProfile";
+import Booking from "./pages/Booking";
+import BookingSuccess from "./pages/BookingSuccess";
+import BookingCancelled from "./pages/BookingCancelled";
 import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 import Contact from "./pages/Contact";
@@ -23,6 +26,9 @@ const App = () => (
           <Route path="/" element={<Dashboard />} />
           <Route path="/doctors" element={<Doctors />} />
           <Route path="/doctor/:id" element={<DoctorProfile />} />
+          <Route path="/booking/:id" element={<Booking />} />
+          <Route path="/booking-success" element={<BookingSuccess />} />
+          <Route path="/booking-cancelled" element={<BookingCancelled />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/contact" element={<Contact />} />
