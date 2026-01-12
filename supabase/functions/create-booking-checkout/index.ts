@@ -23,7 +23,14 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const supabaseClient = createClient(
+  // Use service role key for server-side operations to bypass RLS
+  const supabaseAdmin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
+  // Use anon key client for auth verification
+  const supabaseAuth = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_ANON_KEY") ?? ""
   );
@@ -33,7 +40,7 @@ serve(async (req) => {
     if (!authHeader) throw new Error("No authorization header provided");
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
+    const { data: userData, error: userError } = await supabaseAuth.auth.getUser(token);
     if (userError) throw new Error(`Authentication error: ${userError.message}`);
     
     const user = userData.user;
@@ -42,8 +49,8 @@ serve(async (req) => {
     const bookingData: BookingRequest = await req.json();
     console.log("[CREATE-BOOKING-CHECKOUT] Booking data received:", bookingData);
 
-    // Create booking record with pending status
-    const { data: booking, error: bookingError } = await supabaseClient
+    // Create booking record with pending status using admin client
+    const { data: booking, error: bookingError } = await supabaseAdmin
       .from("bookings")
       .insert({
         user_id: user.id,
@@ -108,8 +115,8 @@ serve(async (req) => {
       },
     });
 
-    // Update booking with Stripe session ID
-    await supabaseClient
+    // Update booking with Stripe session ID using admin client
+    await supabaseAdmin
       .from("bookings")
       .update({ stripe_session_id: session.id })
       .eq("id", booking.id);
