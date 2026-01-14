@@ -13,6 +13,8 @@ import {
   Video,
   MapPin,
   Loader2,
+  CreditCard,
+  AlertCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -25,6 +27,7 @@ interface BookingDetails {
   consultation_type: string;
   fee: number;
   status: string;
+  payment_status: string;
 }
 
 export default function BookingSuccess() {
@@ -36,6 +39,8 @@ export default function BookingSuccess() {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(true);
+  const [paymentFailed, setPaymentFailed] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
 
   useEffect(() => {
     const verifyAndFetchBooking = async () => {
@@ -54,21 +59,37 @@ export default function BookingSuccess() {
 
         if (verifyError) {
           console.error("Verification error:", verifyError);
+          setPaymentFailed(true);
         } else if (verifyData?.booking) {
           setBooking(verifyData.booking);
           
-          // Send confirmation email
-          await supabase.functions.invoke("send-booking-confirmation", {
-            body: { bookingId },
-          });
+          if (verifyData.booking.payment_status === "paid") {
+            // Send confirmation email
+            await supabase.functions.invoke("send-booking-confirmation", {
+              body: { bookingId },
+            });
 
-          toast({
-            title: "Booking confirmed!",
-            description: "A confirmation email has been sent to you.",
-          });
+            toast({
+              title: "Booking confirmed!",
+              description: "A confirmation email has been sent to you.",
+            });
+          } else {
+            setPaymentFailed(true);
+            setBooking(verifyData.booking);
+          }
+        } else if (verifyData?.success === false) {
+          setPaymentFailed(true);
+          // Fetch booking details even if payment failed
+          const { data: bookingData } = await supabase
+            .from("bookings")
+            .select("*")
+            .eq("id", bookingId)
+            .single();
+          if (bookingData) setBooking(bookingData);
         }
       } catch (error) {
         console.error("Error:", error);
+        setPaymentFailed(true);
       } finally {
         setVerifying(false);
         setLoading(false);
@@ -77,6 +98,64 @@ export default function BookingSuccess() {
 
     verifyAndFetchBooking();
   }, [bookingId, toast]);
+
+  const handleResumePayment = async () => {
+    if (!bookingId) return;
+
+    setIsResuming(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("resume-booking-checkout", {
+        body: { bookingId },
+      });
+
+      if (error) throw error;
+
+      if (data?.alreadyPaid) {
+        toast({
+          title: "Already Paid",
+          description: "This booking has already been paid.",
+        });
+        window.location.reload();
+        return;
+      }
+
+      if (data?.url) {
+        const url = data.url as string;
+        const isEmbedded = (() => {
+          try {
+            return window.self !== window.top;
+          } catch {
+            return true;
+          }
+        })();
+
+        if (isEmbedded) {
+          const newTab = window.open(url, "_blank", "noopener,noreferrer");
+          if (!newTab) {
+            window.location.href = url;
+          } else {
+            toast({
+              title: "Checkout opened",
+              description: "Complete payment in the new tab.",
+            });
+          }
+        } else {
+          window.location.href = url;
+        }
+      } else {
+        throw new Error("No checkout URL received");
+      }
+    } catch (error: any) {
+      console.error("Resume payment error:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to resume payment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResuming(false);
+    }
+  };
 
   if (loading || verifying) {
     return (
@@ -89,13 +168,101 @@ export default function BookingSuccess() {
     );
   }
 
-  if (!bookingId || !booking) {
+  if (!bookingId) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <Card className="p-8 text-center max-w-md">
           <h2 className="text-2xl font-bold text-foreground mb-4">Booking Not Found</h2>
           <p className="text-muted-foreground mb-6">
             We couldn't find your booking. Please check your email for confirmation or contact support.
+          </p>
+          <Button onClick={() => navigate("/")}>Go Home</Button>
+        </Card>
+      </div>
+    );
+  }
+
+  // Payment failed state
+  if (paymentFailed && booking) {
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="bg-card border-b border-border">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate("/")}>
+              <Activity className="w-8 h-8 text-primary" />
+              <h1 className="text-2xl font-bold text-foreground">MediConnect</h1>
+            </div>
+          </div>
+        </header>
+
+        <main className="container mx-auto px-4 py-12">
+          <div className="max-w-lg mx-auto">
+            <Card className="p-8 text-center">
+              <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <AlertCircle className="h-12 w-12 text-yellow-600" />
+              </div>
+
+              <h2 className="text-2xl font-bold text-foreground mb-2">Payment Incomplete</h2>
+              <p className="text-muted-foreground mb-6">
+                Your booking is saved but payment was not completed. Complete the payment to confirm your appointment.
+              </p>
+
+              <div className="bg-secondary/30 rounded-lg p-4 text-left mb-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <User className="h-5 w-5 text-primary" />
+                  <div>
+                    <p className="font-medium text-foreground">{booking.doctor_name}</p>
+                    <p className="text-sm text-muted-foreground">{booking.doctor_specialization}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mb-3">
+                  <Calendar className="h-5 w-5 text-primary" />
+                  <p className="text-sm text-foreground">
+                    {format(new Date(booking.appointment_date), "MMMM d, yyyy")} at {booking.appointment_time}
+                  </p>
+                </div>
+                <div className="flex justify-between items-center pt-3 border-t border-border">
+                  <span className="text-muted-foreground">Amount</span>
+                  <span className="text-lg font-bold text-primary">₹{booking.fee}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Button 
+                  className="w-full" 
+                  onClick={handleResumePayment}
+                  disabled={isResuming}
+                >
+                  {isResuming ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Complete Payment - ₹{booking.fee}
+                    </>
+                  )}
+                </Button>
+                <Button variant="outline" className="w-full" onClick={() => navigate("/")}>
+                  Back to Home
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Card className="p-8 text-center max-w-md">
+          <h2 className="text-2xl font-bold text-foreground mb-4">Booking Not Found</h2>
+          <p className="text-muted-foreground mb-6">
+            We couldn't find your booking details. Please contact support.
           </p>
           <Button onClick={() => navigate("/")}>Go Home</Button>
         </Card>
