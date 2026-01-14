@@ -182,7 +182,30 @@ export default function Booking() {
       if (error) throw error;
 
       if (data?.url) {
-        window.location.href = data.url;
+        const url = data.url as string;
+        const isEmbedded = (() => {
+          try {
+            return window.self !== window.top;
+          } catch {
+            return true;
+          }
+        })();
+
+        // Stripe Checkout cannot render inside an iframe, so in preview we open a new tab.
+        if (isEmbedded) {
+          const newTab = window.open(url, "_blank", "noopener,noreferrer");
+          if (!newTab) {
+            // Popup blocked; fall back to same-tab navigation.
+            window.location.href = url;
+          } else {
+            toast({
+              title: "Checkout opened",
+              description: "Complete payment in the new tab. After payment you’ll be redirected to confirmation.",
+            });
+          }
+        } else {
+          window.location.href = url;
+        }
       } else {
         throw new Error("No checkout URL received");
       }

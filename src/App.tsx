@@ -12,6 +12,7 @@ import BookingCancelled from "./pages/BookingCancelled";
 import Auth from "./pages/Auth";
 import Profile from "./pages/Profile";
 import Contact from "./pages/Contact";
+import MedicalChatbot from "./pages/MedicalChatbot";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
